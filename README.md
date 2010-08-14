@@ -36,15 +36,15 @@ The Gowalla API is really simple to use but I wanted some syntactic sugar becaus
 
 ## Example script:
 
-  var Gowalla = require('./gowalla');
-  var gowalla = new Gowalla("YOUR APIKEY");
+    var Gowalla = require('./gowalla');
+    var gowalla = new Gowalla("YOUR APIKEY");
 
-  gowalla.user("jspies").stamps(function(data) {
-    var num_stamps = data.stamps.length;
-    for(var i=0;i<num_stamps;i++) {
-      console.log(data.stamps[i].spot.name);
-    }
-  });
+    gowalla.user("jspies").stamps(function(data) {
+      var num_stamps = data.stamps.length;
+      for(var i=0;i<num_stamps;i++) {
+        console.log(data.stamps[i].spot.name);
+      }
+    });
 
 ## What's Next?
 
