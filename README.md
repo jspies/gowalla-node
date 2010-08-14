@@ -6,8 +6,8 @@ The Gowalla API is really simple to use but I wanted some syntactic sugar becaus
 
 ## Usage
  
-### initialize
-  gowalla = new Gowalla(API_KEY, (optional: username), (optional: password));
+### Initialize
+    gowalla = new Gowalla(API_KEY, (optional: username), (optional: password));
   
   The username and password are optional. You can get a lot out of the API without it.
   
@@ -28,21 +28,23 @@ The Gowalla API is really simple to use but I wanted some syntactic sugar becaus
     gowalla.user("jspies", callback).stamps(callback);
    
 ### Searching
+
+ You can search the spots you pull back from a lat/lng
  
- gowalla.spots(30.2697, -97.7494, 5).search("Torchy");
+    gowalla.spots(30.2697, -97.7494, 5).search("Torchy");
  
 
 ## Example script:
 
-var Gowalla = require('./gowalla');
-var gowalla = new Gowalla("YOUR APIKEY");
+  var Gowalla = require('./gowalla');
+  var gowalla = new Gowalla("YOUR APIKEY");
 
-gowalla.user("jspies").stamps(function(data) {
-  var num_stamps = data.stamps.length;
-  for(var i=0;i<num_stamps;i++) {
-    console.log(data.stamps[i].spot.name);
-  }
-});
+  gowalla.user("jspies").stamps(function(data) {
+    var num_stamps = data.stamps.length;
+    for(var i=0;i<num_stamps;i++) {
+      console.log(data.stamps[i].spot.name);
+    }
+  });
 
 ## What's Next?
 

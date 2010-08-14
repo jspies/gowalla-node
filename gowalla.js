@@ -71,6 +71,15 @@ Gowalla.prototype = {
           self._get(this.base+'/stamps?limit='+limit, callback);
         }
       },
+      pins: function(callback) {
+        self._get(this.base+"/pins", callback);
+      },
+      trips: function(callback) {
+        self._get(this.base+"/trips", callback);
+      },
+      items: function(callback) {
+        self._get(this.base+"/items", callback);
+      },
       topspots: function(callback) {
         self._get(this.base+"/topspots", callback);
       },
@@ -132,10 +141,22 @@ Gowalla.prototype = {
       
       items: function(callback) {
         self._get(this.base+'/items', callback);
+      },
+      
+      flags: function(callback) {
+        self._get(this.base+'/flags', callback);
       }
     }
     
     return new Spot(id);
+  },
+  
+  flags: function(callback) {
+    this._get("/flags", callback);
+  },
+  
+  flag: function(id, callback) {
+    this._get("/flag/"+id, callback);
   },
   
   categories: function(callback) {
