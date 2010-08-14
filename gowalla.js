@@ -23,8 +23,18 @@
  
    gowalla.spots(30.2697, -97.7494, 5).search("Torchy");
  
+ Gowalla-node includes a Spot Checkin Poller (takes an id, minutes and a callback):
+ 
+   gowalla.spotPoller.add(9262, 10, function(checkin) {
+     // do something, like make a robotic voice announce everyone that enters your store
+     console.log(checkin);
+   });
+   
+   gowalla.spotPoller.remove(9292);
+   
  */
 var http = require('http');
+var events = require('events');
 var sys = require('sys');
 
 module.exports = Gowalla;
@@ -43,7 +53,7 @@ function Gowalla(api, username, password) {
   }
   
   this.client = http.createClient(80, this.baseURL);
-  
+  this.spotPoller = new Gowalla_SpotPoller(this);
 };
 
 Gowalla.prototype = {
@@ -250,4 +260,55 @@ Gowalla.prototype = {
 
 		return output;
 	}
-}
+};
+
+var Gowalla_SpotWorker = function(poller, spot_id, minutes, callback) {
+  this.poller = poller;
+  this.minutes = minutes;
+  this.callback = callback;
+  this.id = spot_id;
+  this.last_created_at = new Date();
+    
+  var self = this;
+  this.interval = setInterval(function() {
+    self.poller.emit("polling", spot_id);
+    self.poller.gowalla.spot(spot_id).checkins(function(data) {
+      var current = 0;
+      while (clean_date(data[current].created_at) > self.last_created_at) {
+        self.poller.emit("new checkin", data[current]);
+        if (self.callback) {
+          self.callback.call(self, data[current]);
+        }
+        if (current > 100) break; // safety valve
+        current += 1;
+      }
+      self.last_created_at = clean_date(data[0].created_at);
+    });
+  }, 1000 * 3 * minutes); 
+  
+  function clean_date(str) {
+    return new Date(str.replace("+", " +"));
+  }
+  
+};
+
+var Gowalla_SpotPoller = function(gowalla) {
+  events.EventEmitter.call(this);
+  this.gowalla = gowalla;
+  this.workers = {};  
+};
+
+Gowalla_SpotPoller.super_ = events.EventEmitter;
+
+Gowalla_SpotPoller.prototype = Object.create(events.EventEmitter.prototype);
+
+Gowalla_SpotPoller.prototype.add = function(spot_id, minutes, callback) {
+  var worker = new Gowalla_SpotWorker(this, spot_id, minutes, callback);
+  this.workers[spot_id] = worker;
+  this.emit('add', spot_id);
+};
+
+Gowalla_SpotPoller.prototype.remove = function(spot_id) {
+  clearInterval(this.workers[spot_id].interval);
+  this.workers[spot_id] = null;
+};
