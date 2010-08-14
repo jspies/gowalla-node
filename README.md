@@ -48,6 +48,8 @@ The Gowalla API is really simple to use but I wanted some syntactic sugar becaus
 
 ## What's Next?
 
+Chain Gang Support
+
 OAuth2 Client
 
 Check-in over API
