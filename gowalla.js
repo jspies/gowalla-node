@@ -126,6 +126,9 @@ Gowalla.prototype = {
       events: function(callback) {
         self._get(this.base+'/events', callback);
       },
+      photos: function(callback) {
+        self._get(this.base+'/photos', callback);
+      },
       
       checkins: function(callback) {
         this.events(function(data) {
@@ -179,7 +182,7 @@ Gowalla.prototype = {
     this._get("/trip/"+id, callback);
   },
   
-  checking: function(id, callback) {
+  checkin: function(id, callback) {
     this._get("/checkin/"+id, callback);
   },
   
