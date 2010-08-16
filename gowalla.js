@@ -169,7 +169,7 @@ Gowalla.prototype = {
   },
   
   flag: function(id, callback) {
-    this._get("/flag/"+id, callback);
+    this._get("/flags/"+id, callback);
   },
   
   categories: function(callback) {
@@ -177,11 +177,11 @@ Gowalla.prototype = {
   },
   
   category: function(id, callback) {
-    this._get("/category/"+id, callback);
+    this._get("/categories/"+id, callback);
   },
   
   item: function(id, callback) {
-    this._get("/item/"+id, callback);
+    this._get("/items/"+id, callback);
   },
   
   trips: function(callback) {
@@ -189,12 +189,27 @@ Gowalla.prototype = {
   },
   
   trip: function(id, callback) {
-    this._get("/trip/"+id, callback);
+    this._get("/trips/"+id, callback);
   },
   
   checkin: function(id, callback) {
-    this._get("/checkin/"+id, callback);
+    this._get("/checkins/"+id, callback);
   },
+  
+  /** Hash options
+      id, lat, lng, comment, post_twitter, post_facebook, test (boolean)
+      
+      Requires user to be authed
+  */
+  /*checkin: function(options, callback) {
+    var path = "/checkins/";
+    if (options.test) {
+      path += "test"
+    }
+    this._post(path, function(data) {
+      console.log(data);
+    });
+  },*/
   
   /** You can store a user name so you don't have to call it all the time */
   set_user: function(username, password) {
@@ -210,7 +225,17 @@ Gowalla.prototype = {
       then just calls the callback
    */
   _get: function(path, callback) {
-    var request = this.client.request('GET', path, this.requestHeaders);
+    this._request('GET', path, null, callback);
+  },
+  
+  _post: function(path, data, callback) {
+    this._request('POST', path, data, callback);
+  },
+  
+  _request: function(type, path, post_data, callback) {
+    var request = this.client.request(type, path, this.requestHeaders);
+    if (post_data)
+      request.write(post_data);
     var self = this;
     var data = '';
   
