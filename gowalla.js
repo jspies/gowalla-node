@@ -32,17 +32,59 @@
    
    gowalla.spotPoller.remove(9292);
    
+  OAuth2 now, and checkins
+  
+  Here's an example using Express, a node.js framework, http://github.com/visionmedia/express
+  
+    app.get("/gowalla", function(req, res) {
+      res.redirect(gowalla.authorize_url("http://localhost:3000/gowalla/auth"));
+    });
+
+    app.get("/gowalla/auth", function(req, res) {
+      var code = req.query.code;
+      gowalla.get_access_token(code, "http://localhost:3000/gowalla/auth", function(error, access_token, refresh_token) {
+        if (error) {
+          res.send("Error: "+ error);  
+        } else {
+          // you should save the access_token and refresh_token in your db if you want to make future requests
+          res.redirect('/');
+        }
+      });
+    });
+    
+  And now checkin
+  
+    gowalla.spot(197397).checkin({
+      lat: 38.9085106333,
+      lng: -77.21468345,
+      comment: "I love checking in",
+      post_to_twitter: true,
+      post_to_facebook: false
+    }, function(msg) {
+      if (msg.error) {
+        if (msg.error == "authorization_expired") {
+          // need to refresh
+        }
+      } else {
+        res.send(msg.detail_html);
+      }
+    }, test? put true here for testing);
+     
  */
 var http = require('http');
 var events = require('events');
 var sys = require('sys');
+var querystring = require('querystring');
+var OAuth2 = require('node-oauth/lib/oauth2').OAuth2;
 
 module.exports = Gowalla;
 
-function Gowalla(api, username, password) {
+function Gowalla(api, secret, username, password) {
   this.API_KEY = api;
   
   this.baseURL = "api.gowalla.com";
+  this.baseOAuthURL = "https://gowalla.com/api/oauth"
+
   this.requestHeaders = {
     "Host": this.baseURL,
     "Accept": "application/json",
@@ -54,6 +96,13 @@ function Gowalla(api, username, password) {
   
   this.client = http.createClient(80, this.baseURL);
   this.spotPoller = new Gowalla_SpotPoller(this);
+  
+  // OAuth stuff
+  this.oauth = new OAuth2(api, secret, "https://gowalla.com/api/oauth", "/new", "/token");
+  this._authorize_url = this.baseOAuthURL+"/new";
+  this._access_url = "";
+  this._access_token = "";
+  this._refresh_token = "";
 };
 
 Gowalla.prototype = {
@@ -106,7 +155,9 @@ Gowalla.prototype = {
   
   spots: function(lat, lng, radius, callback) {
     var self = this; // save for nested Spots
-    this._get('/spots/?lat='+lat+'&lng='+lng+'&radius='+radius, callback);
+    if (callback) {
+      this._get('/spots/?lat='+lat+'&lng='+lng+'&radius='+radius, callback);
+    }
     
     function Spots(lat, lng, radius) {
       this.base = '/spots/?lat='+lat+'&lng='+lng+'&radius='+radius;
@@ -138,6 +189,37 @@ Gowalla.prototype = {
       },
       photos: function(callback) {
         self._get(this.base+'/photos', callback);
+      },
+      
+      /** Check in! Please don't abuse. Gowalla will suck if people check in remotely. Seriously suck.
+        Requirements:
+          Must have used OAuth
+          lat
+          lng
+        Optional
+          comment
+          post_to_twitter and post_to_facebook will default to false
+       */
+      checkin: function(options, callback, test) {
+        if (!self._access_token) {
+          callback("No Access");
+          return false;
+        }
+        if (!options.lat || !options.lng) {
+          callback("missing lat lng");
+          return false;
+        }
+        if (!options.comment) options.comment = "";
+        if (!options.post_to_twitter) options.post_to_twitter = false;
+        if (!options.post_to_facebook) options.post_to_facebook = false;
+        var path = "/checkins/";
+        if (test) {
+          path += "test";
+        }
+        options.spot_id = this.id;
+        self._post(path, options, function(data) {
+          callback(data);
+        });
       },
       
       checkins: function(callback) {
@@ -196,25 +278,54 @@ Gowalla.prototype = {
     this._get("/checkins/"+id, callback);
   },
   
-  /** Hash options
-      id, lat, lng, comment, post_twitter, post_facebook, test (boolean)
+  /** OAuth Stuff */
+  refresh_token: function() {
+    return this._refresh_token;
+  },
+  
+  authorize_url: function(redirect_uri) {
+    return this._authorize_url+"?redirect_uri="+redirect_uri+"&client_id="+this.API_KEY+"&scope=read-write";
+  },
+  
+  get_access_token: function(code, redirect_uri, callback) {
+    var self = this;
+    this.oauth.getOAuthAccessToken(code, {'grant_type':'authorization_code', 'redirect_uri': redirect_uri, scope: "read-write"}, function(error, access_token, refresh_token, data) {
+      if (!error) {
+        self.set_oauth();
+        self._access_token = access_token;
+        self._refresh_token = refresh_token;
+        self.username = data.username;
+      }
       
-      Requires user to be authed
-  */
-  /*checkin: function(options, callback) {
-    var path = "/checkins/";
-    if (options.test) {
-      path += "test"
-    }
-    this._post(path, function(data) {
-      console.log(data);
+      callback(error, access_token, refresh_token);
     });
-  },*/
+  },
+  
+  /** Yeah... this is untested, feel free to make sure it works :) */
+  refresh_access_token: function(refresh_token, redirect_uri, callback) {
+    var self = this;
+    this.oauth.refreshOAuthToken(refresh_token, {}, function(error, access_token, refresh_token, data) {
+      if (!error) {
+        self.set_oauth();
+        self._access_token = access_token;
+        self._refresh_token = refresh_token;
+        self.username = data.username;
+      }
+      callback(error, access_token, refresh_token);
+    });
+  },
   
   /** You can store a user name so you don't have to call it all the time */
   set_user: function(username, password) {
     this.requestHeaders.Authorization = "Basic "+this._encode64(username+':'+password);
     this.username = username;
+  },
+  
+  set_oauth: function() {
+    if (this.requestHeaders.Authorization) {
+      this.requestHeaders.Authorization = null;
+    }
+    this.client = http.createClient(443, this.baseURL, true);
   },
     
   /** Anything past here is essentially a private function. That's why I used an underscore
@@ -232,19 +343,40 @@ Gowalla.prototype = {
     this._request('POST', path, data, callback);
   },
   
-  _request: function(type, path, post_data, callback) {
-    var request = this.client.request(type, path, this.requestHeaders);
-    if (post_data)
-      request.write(post_data);
-    var self = this;
-    var data = '';
+  build_path: function(path, type) {
+    if (this._access_token && type == "GET") {
+      this.baseURL = "https://"+this.baseURL;
+      if (type == "GET") {
+        if (path.indexOf('?') > -1) {
+          path += "&oauth_token="+this._access_token;
+        } else {
+          path += "?oauth_token="+this._access_token;
+        }
+      }
+    }
+    return path;
+  },
   
+  _request: function(type, path, post_data, callback) {
+    var self = this;
+    var headers = this.requestHeaders;
+    
+    if (post_data) {
+      post_data.oauth_token = this._access_token;
+      post_data = querystring.stringify(post_data);
+      headers['Content-Length'] = post_data.length;
+    }
+    var request = this.client.request(type, this.build_path(path), headers);
+    if (post_data) { 
+      request.write(post_data, "ascii");
+    }
+    var data = '';
     request.on('response', function(response) {
       response.setEncoding("utf8");
       response.on("data", function(bits) {
         data += bits;
       });
-      
+
       response.on("end", function() {
         if (callback) {
           callback.call(self, JSON.parse(data));
