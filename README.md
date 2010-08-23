@@ -34,15 +34,15 @@ The Gowalla API is really simple to use but I wanted some syntactic sugar becaus
  
     gowalla.spots(30.2697, -97.7494, 5).search("Torchy");
  
-### Spot Checkin Listening
+### Polling
 
-  You can setup up events on spots to tell you when someone checks in there.
+  You can setup events on spots to tell you when someone checks in there. Or items to see when they move
   
-    gowalla.spotPoller.add(10542, 10, function(checkin) {
+    gowalla.spot(10542).poll(10, "April 2, 2010", function(checkin) {
       console.log(checkin.user.first_name+" is admiring the Mystery Gorilla");
     });
     
-    gowalla.spotPoller.remove(10542); // when you tire of the Gorilla
+    gowalla.spot(10542).stop(); // when you tire of the Gorilla
     
 
 ### OAuth2 now, and checkins

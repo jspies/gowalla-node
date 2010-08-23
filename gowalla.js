@@ -23,14 +23,15 @@
  
    gowalla.spots(30.2697, -97.7494, 5).search("Torchy");
  
- Gowalla-node includes a Spot Checkin Poller (takes an id, minutes and a callback):
+ Gowalla-node includes a Poller to simulate a listen for new activity (takes minutes, a start date and a callback):
+ (currently on items and spots, could be added to users too)
  
-   gowalla.spotPoller.add(9262, 10, function(checkin) {
+   gowalla.spot(9262).poll(10, "May 10, 2010", function(checkin) {
      // do something, like make a robotic voice announce everyone that enters your store
      console.log(checkin);
    });
    
-   gowalla.spotPoller.remove(9292);
+   gowalla.spot(9262).stop();
    
   OAuth2 now, and checkins
   
@@ -95,7 +96,7 @@ function Gowalla(api, secret, username, password) {
   }
   
   this.client = http.createClient(80, this.baseURL);
-  this.spotPoller = new Gowalla_SpotPoller(this);
+  this.poller = new Gowalla_Poller(this);
   
   // OAuth stuff
   this.oauth = new OAuth2(api, secret, "https://gowalla.com/api/oauth", "/new", "/token");
@@ -106,6 +107,10 @@ function Gowalla(api, secret, username, password) {
 };
 
 Gowalla.prototype = {
+  // generic for sending urls. mostly because the gowalla API sends back urls instead of IDs
+  url: function(url, callback) {
+    this._get(url, callback);
+  },
 
   user: function(username, callback) {
     var self = this; // save for nested Objects
@@ -129,6 +134,15 @@ Gowalla.prototype = {
         } else {
           self._get(this.base+'/stamps?limit='+limit, callback);
         }
+      },
+      last_checkin: function(callback) {
+        self._get(this.base, function(data) {
+          if (data.last_checkins) {
+            callback(data.last_checkins[0]);
+          } else {
+           callback(data);
+          }
+        });
       },
       pins: function(callback) {
         self._get(this.base+"/pins", callback);
@@ -182,6 +196,7 @@ Gowalla.prototype = {
     function Spot(id) {
       this.base = "/spots/"+id;
       this.id = id;
+      this.poll_id;
     };
     Spot.prototype = {
       events: function(callback) {
@@ -189,6 +204,12 @@ Gowalla.prototype = {
       },
       photos: function(callback) {
         self._get(this.base+'/photos', callback);
+      },
+      poll: function(minutes, start_date, callback) {
+        this.poll_id = self.poller.add(this.base+"/checkins", minutes, start_date, callback);
+      },
+      stop: function() {
+        self.poller.remove(this.poll_id);
       },
       
       /** Check in! Please don't abuse. Gowalla will suck if people check in remotely. Seriously suck.
@@ -263,7 +284,25 @@ Gowalla.prototype = {
   },
   
   item: function(id, callback) {
-    this._get("/items/"+id, callback);
+    var self = this; // save for nested Objects
+    if (callback) {
+      this._get("/items/"+id, callback);
+    }
+    
+    function Item(id) {
+      this.base = "/items/"+id;
+      this.id = id;
+      this.poll_id;
+    };
+    Item.prototype = {
+      poll: function(minutes, start_date, callback) {
+        this.poll_id = self.poller.add(this.base+"/activity", minutes, start_date, callback);
+      },
+      stop: function() {
+        self.poller.remove(this.poll_id);
+      }
+    };
+    return new Item(id);
   },
   
   trips: function(callback) {
@@ -372,6 +411,7 @@ Gowalla.prototype = {
     }
     var data = '';
     request.on('response', function(response) {
+      // maybe we should return an error is status not 200 range
       response.setEncoding("utf8");
       response.on("data", function(bits) {
         data += bits;
@@ -419,29 +459,35 @@ Gowalla.prototype = {
 	}
 };
 
-var Gowalla_SpotWorker = function(poller, spot_id, minutes, callback) {
+var Gowalla_Worker = function(poller, path, minutes, start_date, callback) {
   this.poller = poller;
   this.minutes = minutes;
   this.callback = callback;
-  this.id = spot_id;
-  this.last_created_at = new Date();
+  this.id = path;
+  this.path = path;
+  if (start_date) {
+    this.last_created_at = new Date(start_date);
+  } else {
+    this.last_created_at = new Date();
+  }
     
   var self = this;
   this.interval = setInterval(function() {
-    self.poller.emit("polling", spot_id);
-    self.poller.gowalla.spot(spot_id).checkins(function(data) {
+    self.poller.emit("polling", this.id);
+    self.poller.gowalla._get(path, function(data) {
       var current = 0;
-      while (clean_date(data[current].created_at) > self.last_created_at) {
-        self.poller.emit("new checkin", data[current]);
+      events = data.events;
+      while (current < events.length && clean_date(events[current].created_at) > self.last_created_at) {
+        self.poller.emit("new event", events[current]);
         if (self.callback) {
-          self.callback.call(self, data[current]);
+          self.callback.call(self, events[current]);
         }
         if (current > 100) break; // safety valve
         current += 1;
       }
-      self.last_created_at = clean_date(data[0].created_at);
+      self.last_created_at = clean_date(events[0].created_at);
     });
-  }, 1000 * 3 * minutes); 
+  }, 1000 * 60 * minutes); 
   
   function clean_date(str) {
     return new Date(str.replace("+", " +"));
@@ -449,23 +495,26 @@ var Gowalla_SpotWorker = function(poller, spot_id, minutes, callback) {
   
 };
 
-var Gowalla_SpotPoller = function(gowalla) {
+// i'd like to say gowalla.spot(34534).poll(function() {});
+var Gowalla_Poller = function(gowalla) {
   events.EventEmitter.call(this);
   this.gowalla = gowalla;
   this.workers = {};  
 };
 
-Gowalla_SpotPoller.super_ = events.EventEmitter;
+Gowalla_Poller.super_ = events.EventEmitter;
 
-Gowalla_SpotPoller.prototype = Object.create(events.EventEmitter.prototype);
+Gowalla_Poller.prototype = Object.create(events.EventEmitter.prototype);
 
-Gowalla_SpotPoller.prototype.add = function(spot_id, minutes, callback) {
-  var worker = new Gowalla_SpotWorker(this, spot_id, minutes, callback);
-  this.workers[spot_id] = worker;
-  this.emit('add', spot_id);
+Gowalla_Poller.prototype.add = function(path, minutes, start_date, callback) {
+  var worker = new Gowalla_Worker(this, path, minutes, start_date, callback);
+  var id = this.workers.length
+  this.workers[id] = worker;
+  this.emit('add', id);
+  return id;
 };
 
-Gowalla_SpotPoller.prototype.remove = function(spot_id) {
-  clearInterval(this.workers[spot_id].interval);
-  this.workers[spot_id] = null;
+Gowalla_Poller.prototype.remove = function(id) {
+  clearInterval(this.workers[id].interval);
+  this.workers[id] = null;
 };
