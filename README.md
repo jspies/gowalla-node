@@ -102,3 +102,5 @@ Chain Gang Support
 OAuth2 Client
 
 Check-in over API
+
+Update: Nothing is next, because Gowalla died like 2 years ago.
